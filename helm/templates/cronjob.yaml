@@ -1,0 +1,64 @@
+{{- range .Values.cronjobs }}
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  labels:
+    {{- include "switchover.labels" $ | nindent 4 }}
+    k8s-app: {{ .name }}
+    app: {{ .name }}
+  name: {{ .name }}-{{ $.Values.label }}
+spec:
+  concurrencyPolicy: Allow
+  failedJobsHistoryLimit: 1
+  schedule: '*/1 * * * *'
+  successfulJobsHistoryLimit: 1
+  suspend: false
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "switchover.labels" $ | nindent 8 }}
+        k8s-app: {{ .name }}
+        app: {{ .name }}
+      annotations:
+        rollme: {{ randAlphaNum 5 | quote }}
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "switchover.labels" $ | nindent 12 }}
+            k8s-app: {{ .name }}
+            app: {{ .name }}
+        spec:
+          containers:
+          - args: [ {{ .arg_command | quote }} ]
+            command: [ {{ $.Values.entrypoint | quote }} ]
+            env:
+            - name: NODE
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: LABEL
+              value: {{ $.Values.label }}
+            image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+            imagePullPolicy: IfNotPresent 
+            name: {{ .name }}-setter
+            volumeMounts:
+            - mountPath: {{ $.Values.entrypoint }}
+              name: {{ $.Chart.Name }}-{{ $.Values.label }}
+              readOnly: true
+              subPath: entrypoint.sh
+          {{- with $.Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}          
+          serviceAccount: {{ include "switchover.serviceAccountName" $ }}
+          serviceAccountName: {{ include "switchover.serviceAccountName" $ }}
+          terminationGracePeriodSeconds: 30
+          restartPolicy: OnFailure
+          volumes:
+          - name: {{ $.Chart.Name }}-{{ $.Values.label }}
+            configMap:
+              name: {{ $.Chart.Name }}-{{ $.Values.label }}
+              defaultMode: 0700
+---
+{{- end }}

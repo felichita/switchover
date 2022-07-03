@@ -1,0 +1,22 @@
+{{- range .Values.services }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ .name }}-{{ $.Values.label }}"
+  labels:
+    {{- include "switchover.labels" $ | nindent 4 }}
+    k8s-app: {{ .name }}
+spec:
+  type: NodePort 
+  ports:
+  - name: http
+    port: {{ .port }}
+    targetPort: {{ .port }}
+    protocol: TCP
+  selector:
+    {{- include "switchover.selectorLabels" $ | nindent 4 }}
+    k8s-app: {{ .name }}
+---
+{{- end }}
+

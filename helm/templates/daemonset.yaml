@@ -1,0 +1,79 @@
+{{- range .Values.services }}
+---
+apiVersion: apps/v1
+kind: DaemonSet 
+metadata:
+  labels:
+    {{- include "switchover.labels" $ | nindent 4 }}
+    k8s-app: {{ .name }}
+    app: {{ .name }}
+  name: {{ .name }}-{{ $.Values.label }}
+  annotations:
+    reloader.stakater.com/auto: "true"
+    readiness.status.sidecar.istio.io/applicationPorts: ""
+spec:
+  replicas: {{ $.Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "switchover.selectorLabels" $ | nindent 6 }}
+      k8s-app: {{ .name }}
+  template:
+    metadata:
+      labels:
+        {{- include "switchover.labels" $ | nindent 8 }}
+        k8s-app: {{ .name }}
+        app: {{ .name }}
+      annotations:
+        rollme: {{ randAlphaNum 5 | quote }}
+        reloader.stakater.com/auto: "true"
+        readiness.status.sidecar.istio.io/applicationPorts: ""
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "switchover.serviceAccountName" $ }}
+      {{- with $.Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers: 
+        - name: {{ .name }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}" 
+          env:
+          - name: NODE
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName 
+          - name: LABEL
+            value: {{ $.Values.label }}
+          command: [ {{ $.Values.entrypoint | quote }} ]
+          args: [ {{ .arg_command | quote }} ]
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .port }}
+              protocol: TCP
+          {{- if .probe -}}
+          {{- toYaml .probe | nindent 10 }}
+          {{- end -}}
+          {{- with .resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+          - mountPath: {{ $.Values.entrypoint }}
+            name: {{ $.Chart.Name }}-{{ $.Values.label }}
+            readOnly: true
+            subPath: entrypoint.sh
+      volumes:
+      - name: {{ $.Chart.Name }}-{{ $.Values.label }}
+        configMap:
+          name: {{ $.Chart.Name }}-{{ $.Values.label }}
+          defaultMode: 0700
+---
+{{- end }}
+

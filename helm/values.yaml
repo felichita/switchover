@@ -1,0 +1,71 @@
+applicationName: switchover 
+environment: stage
+
+label: switchover
+
+services:
+  - name: switchover
+    port: 8080
+    arg_command: gunicorn 
+    probe:
+      livenessProbe:
+        httpGet:
+          path: "/liveness"
+          port: 8080
+        initialDelaySeconds: 30
+        timeoutSeconds: 10
+      startupProbe:
+        httpGet:
+          path: "/startup"
+          port: 8080
+        failureThreshold: 30
+        periodSeconds: 10
+        timeoutSeconds: 10
+
+cronjobs:
+  - name: switchover-setter
+    arg_command: cron
+
+image:
+  repository: nexus:5000/ops/switchover
+  pullPolicy: Always
+  tag: ""
+
+imageCredentials:
+  registry: nexus:5000
+  username: ci2
+  password: secret
+  email: root@example.com
+
+imagePullSecrets:
+- name: registry
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: node-role.kubernetes.io/master
+          operator: NotIn
+          values:
+          - ''
+
+nodeSelector:
+  switchover: closely 
+
+tolerations:
+- key: switchover
+  operator: Exists
+  effect: NoExecute
+
+entrypoint: /app/entrypoint.sh
+
+vault:
+  url: http://vault:8200
+  token: root
+  mount_point: kubernetes

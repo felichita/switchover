@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Chart.Name }}-{{ .Values.label }}
+  labels:
+    {{- include "switchover.labels" $ | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation 
+data:
+  entrypoint.sh: |-
+    #!/bin/bash
+    FILES=$(curl -s -H "X-Vault-Token: {{ .Values.vault.token }}" {{ .Values.vault.url }}/v1/{{ .Values.vault.mount_point }}/data/{{ .Release.Namespace }}/{{ .Values.applicationName  }}-{{ .Values.label }}-config | jq -r '.data.data | keys[]')
+    for FILE in $FILES;do
+      curl -s -H "X-Vault-Token: {{ .Values.vault.token }}" {{ .Values.vault.url }}/v1/{{ .Values.vault.mount_point }}/data/{{ .Release.Namespace }}/{{ .Values.applicationName }}-{{ .Values.label }}-config | jq -r ".data.data | .\"$FILE\"" > "$FILE"
+    done
+    svc=$1
+    if [[ $svc == "gunicorn" ]];then
+      gunicorn -c /app/etc/gunicorn.conf.py wsgi 
+    elif [[ $svc == "cron" ]];then
+      python /app/cronjob.py 
+    fi

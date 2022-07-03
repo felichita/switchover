@@ -1,0 +1,31 @@
+stages:
+  - build
+
+variables:
+  IMAGE: '${REGISTRY_URL}/ops/${CI_PROJECT_NAME}'
+  DOCKER_IMAGE: '${REGISTRY_URL}/ops/dind:latest'
+
+.docker: &docker
+  image: $DOCKER_IMAGE
+
+  services:
+    - name: $DOCKER_IMAGE
+      alias: docker
+      command: ["--experimental"]
+
+  before_script:
+    - docker login -u $REGISTRY_USERNAME -p $REGISTRY_PASSWORD $REGISTRY_URL
+
+# ---- Build Docker image ----
+current-image:
+  <<: *docker
+  stage: build
+  image: $DOCKER_IMAGE
+  tags:
+    - docker
+  script:
+    - DOCKER_BUILDKIT=1 docker build --pull --build-arg CI_PROJECT_NAME=$CI_PROJECT_NAME --build-arg REGISTRY_URL=$REGISTRY_URL -t $IMAGE:$CI_COMMIT_SHORT_SHA -f Dockerfile .
+    - docker push $IMAGE:$CI_COMMIT_SHORT_SHA
+  interruptible: true
+
+# ---- End block build docker images ----
